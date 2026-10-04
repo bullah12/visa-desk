@@ -6,6 +6,6 @@ Applicant records and images are stored in that browser's IndexedDB. They are no
 
 The site contains no applicant data or personal contact/address defaults. Set your own shared details in the app or import a private backup. Do not commit passport images or backup files.
 
-For local development, run a static HTTP server from this directory, such as `python3 -m http.server 8765 --bind 127.0.0.1`, then visit `http://127.0.0.1:8765`. `node --test scan.test.mjs` runs the scanner's parser checks.
+For local development, run a static HTTP server from this directory, such as `python3 -m http.server 8765 --bind 127.0.0.1`, then visit `http://127.0.0.1:8765`. `node --test scan.test.mjs crypto.test.mjs` runs the scanner and backup checks.
 
 The app prepares drafts and photos but does not fill or submit the official ETA website. Always review recognized fields against the passport.
