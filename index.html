@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#12332f">
+  <title>Visa Desk · Private application workspace</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark">V</div><div><strong>Visa Desk</strong><span>Private workspace</span></div></div>
+      <nav aria-label="Main navigation">
+        <button class="nav-link active" data-view="overview"><span>◫</span> Overview</button>
+        <button class="nav-link" data-view="applicants"><span>▤</span> Applicants <em id="navCount">0</em></button>
+        <button class="nav-link" data-view="history"><span>↺</span> History</button>
+        <button class="nav-link" data-view="settings"><span>⚙</span> Shared details</button>
+      </nav>
+      <div class="sidebar-foot"><span class="privacy-dot"></span> Stored in this browser<br><small>No account · No cloud sync</small></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar"><div class="mobile-brand">Visa Desk</div><div class="topbar-right"><span id="storageStatus" class="storage-status">Checking local storage…</span><button id="exportBackupBtn" class="button button-subtle">Export backup</button></div></header>
+
+      <section id="view-overview" class="view active">
+        <div class="page-heading"><div><div class="eyebrow">YOUR PRIVATE WORKSPACE</div><h1>Application overview</h1><p>Prepare each person’s details, review their documents, then use them when the official form is available.</p></div><button class="button button-primary" data-action="add-person">+ Add applicant</button></div>
+        <div class="stats"><div class="stat"><span>Applicants</span><strong id="statApplicants">0</strong><small>In this browser</small></div><div class="stat"><span>Ready for review</span><strong id="statReady">0</strong><small>Basic checks passed</small></div><div class="stat"><span>Needs attention</span><strong id="statAttention">0</strong><small>Missing details or photos</small></div></div>
+        <div class="section-heading"><h2>Current applicants</h2><button class="text-button" data-view="applicants">View all →</button></div>
+        <div id="overviewCards" class="person-grid"></div>
+        <div class="overview-bottom"><div class="panel"><h3>Bring in documents</h3><p>Import passport photo pages, scanned PDFs and headshots. Files are read on this device.</p><div class="button-row"><button class="button button-outline" data-action="passport-import">Import passports</button><button class="button button-outline" data-action="headshot-import">Import headshots</button></div></div><div class="panel"><h3>Move a batch yourself</h3><p>Backups contain personal details and images. Export an encrypted file, then import it on another device.</p><div class="button-row"><button class="button button-outline" data-action="backup-import">Import backup</button><button class="button button-outline" data-action="backup-export">Export backup</button></div></div></div>
+      </section>
+
+      <section id="view-applicants" class="view">
+        <div class="page-heading"><div><div class="eyebrow">APPLICATIONS</div><h1>Applicants</h1><p>One traveller per record. Select a person to inspect the full draft.</p></div><button class="button button-primary" data-action="add-person">+ Add applicant</button></div>
+        <div class="workspace"><div class="people-pane"><div class="pane-title">People <span id="peopleCount">0</span></div><input id="peopleSearch" class="search" placeholder="Search by name or passport" aria-label="Search applicants"><div id="peopleList" class="people-list"></div><div class="pane-bottom"><button class="button button-outline" data-action="passport-import">+ Import passports</button><button class="button button-outline" data-action="headshot-import">+ Headshots</button></div></div><div id="personDetail" class="detail-pane"><div class="empty-detail"><div class="empty-icon">▤</div><h2>Select an applicant</h2><p>Their details and documents will appear here.</p></div></div></div>
+      </section>
+
+      <section id="view-history" class="view"><div class="page-heading"><div><div class="eyebrow">REUSE DETAILS</div><h1>Submission history</h1><p>Records appear here only after you mark them as submitted. Reuse identity details for a fresh draft.</p></div></div><div id="historyList" class="history-list"></div></section>
+
+      <section id="view-settings" class="view"><div class="page-heading"><div><div class="eyebrow">SHARED DETAILS</div><h1>Defaults for new people</h1><p>These values are copied into each new applicant. You can still edit any person individually.</p></div></div><div class="settings-layout"><div class="panel"><form id="sharedForm" class="form-grid"></form><div class="button-row settings-actions"><button id="saveDefaultsBtn" class="button button-primary">Save defaults</button><button id="applyDefaultsBtn" class="button button-outline">Apply to everyone</button></div></div><div class="panel info-panel"><h3>Privacy and storage</h3><p>Applicant records, passport images and headshots are stored in this browser’s IndexedDB on this device. This app has no server API and does not upload documents.</p><p>Clearing browser site data can erase these records. Export an encrypted backup after meaningful changes and keep its passphrase separately.</p><p>Desktop and phone keep separate records until you deliberately export and import a backup.</p><button class="button button-outline" data-action="backup-import">Import a backup</button></div></div></section>
+    </main>
+  </div>
+
+  <div id="modalRoot"></div><div id="toast" role="status" aria-live="polite"></div>
+  <input id="passportInput" class="sr-only" type="file" accept="image/*,.pdf,application/pdf" multiple>
+  <input id="headshotInput" class="sr-only" type="file" accept="image/*" multiple>
+  <input id="backupInput" class="sr-only" type="file" accept=".json,application/json">
+  <script src="./vendor/tesseract.min.js" defer></script>
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>
