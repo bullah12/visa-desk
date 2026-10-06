@@ -9,3 +9,5 @@ The site contains no applicant data or personal contact/address defaults. Set yo
 For local development, run a static HTTP server from this directory, such as `python3 -m http.server 8765 --bind 127.0.0.1`, then visit `http://127.0.0.1:8765`. `node --test scan.test.mjs crypto.test.mjs` runs the scanner and backup checks.
 
 The app prepares drafts and photos but does not fill or submit the official ETA website. Always review recognized fields against the passport.
+
+The UK KSA Visa field checklist and remaining mapping gaps are in [FIELD_MAPPING.md](FIELD_MAPPING.md). Visa validity and permitted duration of stay are separate from the traveller's planned stay.

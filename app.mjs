@@ -4,20 +4,24 @@ import { encryptBackup, decryptBackup } from './crypto.mjs';
 
 const ETA_URL = 'https://ksavisa.sa/visa/electronic-travel-authorization/details';
 const FIELDS = [
-  ['Identity', 'first_names', 'Given name(s)'], ['Identity', 'surname', 'Surname'], ['Identity', 'date_of_birth', 'Date of birth'], ['Identity', 'sex', 'Sex on passport'], ['Identity', 'place_of_birth', 'Place of birth'], ['Identity', 'country_of_birth', 'Country of birth'],
-  ['Passport', 'passport_number', 'Passport number'], ['Passport', 'passport_type', 'Passport type'], ['Passport', 'nationality', 'Nationality'], ['Passport', 'issue_date', 'Issue date'], ['Passport', 'expiry_date', 'Expiry date'], ['Passport', 'issuing_authority', 'Issuing authority'],
-  ['Contact', 'email', 'Contact email'], ['Contact', 'phone', 'Contact phone'],
-  ['Travel', 'purpose', 'Purpose of visit'], ['Travel', 'umrah_intended', 'Umrah if asked'], ['Travel', 'departure_country', 'Departure country'], ['Travel', 'arrival_date', 'Expected arrival date'], ['Travel', 'arrival_mode', 'Arrival mode'], ['Travel', 'arrival_city', 'Arrival city'], ['Travel', 'arrival_port', 'Arrival airport'], ['Travel', 'flight_number', 'Flight number'], ['Travel', 'planned_stay_days', 'Planned stay, days'],
+  ['Identity', 'first_names', 'Given name(s)'], ['Identity', 'surname', 'Surname'], ['Identity', 'date_of_birth', 'Date of birth'], ['Identity', 'sex', 'Sex on passport'], ['Identity', 'marital_status', 'Marital status'], ['Identity', 'religion', 'Religion'], ['Identity', 'place_of_birth', 'Place of birth'], ['Identity', 'country_of_birth', 'Country of birth'],
+  ['Passport', 'passport_number', 'Passport number'], ['Passport', 'passport_type', 'Passport type'], ['Passport', 'nationality', 'Nationality'], ['Passport', 'passport_country_of_issuance', 'Passport country of issuance'], ['Passport', 'passport_place_of_issuance', 'Place of passport issuance'], ['Passport', 'issue_date', 'Issue date'], ['Passport', 'expiry_date', 'Expiry date'], ['Passport', 'issuing_authority', 'Issuing authority'],
+  ['Contact', 'email', 'Contact email'], ['Contact', 'phone_country_code', 'Phone country code'], ['Contact', 'phone', 'Phone number (without country code)'],
+  ['Travel', 'purpose', 'Purpose of visit'], ['Travel', 'umrah_intended', 'Umrah if asked'], ['Travel', 'number_of_entries', 'Number of entries'], ['Travel', 'visa_period', 'Visa validity, days'], ['Travel', 'visa_duration_of_stay', 'Visa duration of stay, days'], ['Travel', 'departure_country', 'Departure country'], ['Travel', 'country_of_residence', 'Country of residence'], ['Travel', 'nearest_embassy', 'Nearest Saudi embassy'], ['Travel', 'countries_visited', 'Countries visited in last five years'], ['Travel', 'arrival_date', 'Expected arrival date'], ['Travel', 'arrival_mode', 'Arrival mode'], ['Travel', 'arrival_city', 'Arrival city'], ['Travel', 'arrival_port', 'Arrival airport'], ['Travel', 'flight_number', 'Flight number'], ['Travel', 'planned_stay_days', 'Planned stay, days'],
+  ['UK residence', 'uk_residence_city', 'City'], ['UK residence', 'uk_residence_postcode', 'Postcode / zip code'], ['UK residence', 'uk_residence_po_box', 'P.O. box / street address'],
   ['Saudi address', 'saudi_street', 'Street / building'], ['Saudi address', 'saudi_short_address', 'Short address'], ['Saudi address', 'saudi_secondary_number', 'Secondary number'], ['Saudi address', 'saudi_district', 'District'], ['Saudi address', 'saudi_city', 'City'], ['Saudi address', 'saudi_postcode', 'Postal code'], ['Saudi address', 'saudi_full_address', 'Full address'], ['Saudi address', 'saudi_host_name', 'Host / hotel name'],
+  ['Saudi address', 'saudi_residence_type', 'Residence type in Saudi Arabia'],
   ['Work', 'employment_status', 'Employment status'], ['Work', 'occupation', 'Occupation / job title'], ['Work', 'employer', 'Employer'],
+  ['Security questions', 'security_laundering_smuggling', 'Money laundering or smuggling conviction / suspension'], ['Security questions', 'security_laundering_smuggling_details', 'If yes, clarify laundering / smuggling'], ['Security questions', 'security_prison', 'Sentenced to prison'], ['Security questions', 'security_prison_details', 'If yes, clarify prison sentence'], ['Security questions', 'security_deportation', 'Deported from any country'], ['Security questions', 'security_deportation_details', 'If yes, clarify deportation'], ['Security questions', 'security_terrorism', 'Terrorism-related arrest or conviction'], ['Security questions', 'security_terrorism_details', 'If yes, clarify terrorism-related case'], ['Security questions', 'security_interpol', 'Arrest warrant or Interpol arrest'], ['Security questions', 'security_armed_forces', 'Armed forces, security or intelligence service'], ['Security questions', 'security_armed_forces_details', 'If yes, clarify service'], ['Security questions', 'security_political_media', 'Political or media work'], ['Security questions', 'security_political_media_details', 'If yes, clarify political / media work'], ['Security questions', 'security_terrorist_organization', 'Membership of classified terrorist organization'], ['Security questions', 'security_terrorist_organization_details', 'If yes, clarify membership'], ['Security questions', 'security_passport_restriction', 'Passport restriction or single-trip validity'],
   ['Review', 'photo_match_note', 'Headshot pairing note'],
 ];
 const DATE_FIELDS = new Set(['date_of_birth', 'issue_date', 'expiry_date', 'arrival_date']);
 const WIDE_FIELDS = new Set(['saudi_full_address', 'photo_match_note']);
-const SHARED_GROUPS = new Set(['Contact', 'Travel', 'Saudi address', 'Work']);
+const SHARED_GROUPS = new Set(['Contact', 'Travel', 'UK residence', 'Saudi address', 'Work']);
+const SECURITY_FIELDS = new Set(FIELDS.filter(([group, key]) => group === 'Security questions' && !key.endsWith('_details')).map(([, key]) => key));
 const DEFAULTS = {
-  passport_type: 'Ordinary', nationality: 'British', country_of_birth: 'United Kingdom', email: '', phone: '',
-  purpose: 'Tourism', umrah_intended: 'Yes', departure_country: 'United Kingdom', arrival_mode: 'Air', arrival_city: 'Jeddah', arrival_port: 'King Abdulaziz International Airport (JED)',
+  passport_type: 'Ordinary', nationality: 'British', country_of_birth: 'United Kingdom', passport_country_of_issuance: 'United Kingdom', passport_place_of_issuance: 'United Kingdom', email: '', phone_country_code: '+966', phone: '',
+  purpose: 'Tourism', umrah_intended: 'Yes', number_of_entries: 'Multiple', visa_period: '730', visa_duration_of_stay: '180', departure_country: 'United Kingdom', country_of_residence: 'United Kingdom', nearest_embassy: 'London', countries_visited: 'None', arrival_mode: 'Air', arrival_city: 'Jeddah', arrival_port: 'King Abdulaziz International Airport (JED)',
   saudi_street: '', saudi_short_address: '', saudi_secondary_number: '', saudi_district: 'Aziziyah', saudi_city: 'Jeddah', saudi_postcode: '', saudi_full_address: '',
   employment_status: 'Unemployed',
 };
@@ -39,15 +43,16 @@ function personName(person) { return `${person.fields.first_names || ''} ${perso
 function initials(person) { return personName(person).split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase(); }
 function selectedPerson() { return state.people.find(person => person.id === selectedId); }
 function safeFilename(value) { return String(value || 'person').replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'person'; }
+function splitSaudiPhone(fields) { const phone = String(fields.phone || '').trim(); if (/^(?:\+966|00966)[\s-]*/.test(phone)) { fields.phone = phone.replace(/^(?:\+966|00966)[\s-]*/, ''); fields.phone_country_code = '+966'; } else fields.phone_country_code ||= '+966'; return fields; }
 function toast(message) { const node = $('#toast'); node.textContent = message; node.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => node.classList.remove('show'), 4500); }
 function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(() => persist(), 350); }
 async function persist() { clearTimeout(saveTimer); try { await saveWorkspace(state); $('#storageStatus').textContent = 'Saved on this device'; } catch (error) { $('#storageStatus').textContent = 'Storage unavailable · export backup'; toast(`Could not save locally: ${error.message}`); } }
 function makePerson(fields = {}, passport = null) {
   const allFields = Object.fromEntries(FIELDS.map(([, key]) => [key, '']));
-  return { id: uid(), fields: { ...allFields, ...state.defaults, ...fields }, passport, headshot: null, preparedPhoto: null, ocrStatus: passport ? 'Passport imported; check OCR result' : 'Not read', ocrText: '', createdAt: new Date().toISOString() };
+  return { id: uid(), fields: splitSaudiPhone({ ...allFields, ...state.defaults, ...fields }), passport, headshot: null, preparedPhoto: null, ocrStatus: passport ? 'Passport imported; check OCR result' : 'Not read', ocrText: '', createdAt: new Date().toISOString() };
 }
 function normalizePerson(raw) {
-  if (raw?.fields) { const person = { ...makePerson(), ...raw, fields: { ...makePerson().fields, ...raw.fields } }; if (!person.fields.country_of_birth) person.fields.country_of_birth = state.defaults.country_of_birth || 'United Kingdom'; return person; }
+  if (raw?.fields) { const person = { ...makePerson(), ...raw, fields: splitSaudiPhone({ ...makePerson().fields, ...raw.fields }) }; if (!person.fields.country_of_birth) person.fields.country_of_birth = state.defaults.country_of_birth || 'United Kingdom'; return person; }
   const fields = Object.fromEntries(FIELDS.map(([, key]) => [key, raw?.[key] || '']));
   if (!fields.purpose) fields.purpose = 'Tourism';
   if (!fields.umrah_intended) fields.umrah_intended = 'Yes';
@@ -58,7 +63,10 @@ function outstandingScanMissing(person) { return [...SCAN_FIELDS, ...PRINTED_ONL
 function reviewItems(person) {
   const f = person.fields;
   const issues = [];
-  for (const [key, label] of [['first_names', 'Given names'], ['surname', 'Surname'], ['date_of_birth', 'Date of birth'], ['passport_number', 'Passport number'], ['expiry_date', 'Passport expiry'], ['email', 'Email'], ['phone', 'Phone'], ['purpose', 'Purpose'], ['arrival_date', 'Arrival date']]) if (!String(f[key] || '').trim()) issues.push(`${label} is missing`);
+  for (const [key, label] of [['first_names', 'Given names'], ['surname', 'Surname'], ['date_of_birth', 'Date of birth'], ['passport_number', 'Passport number'], ['expiry_date', 'Passport expiry'], ['email', 'Email'], ['phone_country_code', 'Phone country code'], ['phone', 'Phone number'], ['purpose', 'Purpose'], ['arrival_date', 'Arrival date']]) if (!String(f[key] || '').trim()) issues.push(`${label} is missing`);
+  for (const [key, label] of [['marital_status', 'Marital status'], ['religion', 'Religion'], ['passport_country_of_issuance', 'Passport country of issuance'], ['passport_place_of_issuance', 'Place of passport issuance'], ['number_of_entries', 'Number of entries'], ['visa_period', 'Visa validity'], ['visa_duration_of_stay', 'Visa duration of stay'], ['country_of_residence', 'Country of residence'], ['nearest_embassy', 'Nearest Saudi embassy'], ['uk_residence_city', 'UK residence city'], ['uk_residence_postcode', 'UK postcode'], ['uk_residence_po_box', 'UK P.O. box / street address'], ['saudi_residence_type', 'Saudi residence type']]) if (!String(f[key] || '').trim()) issues.push(`${label} is missing`);
+  if ([...SECURITY_FIELDS].some(key => !['Yes', 'No'].includes(f[key]))) issues.push('Security questions need individual answers');
+  for (const key of SECURITY_FIELDS) if (f[key] === 'Yes' && key !== 'security_interpol' && key !== 'security_passport_restriction' && !String(f[`${key}_details`] || '').trim()) issues.push(`Clarification is missing for ${FIELDS.find(([, field]) => field === key)?.[2] || key}`);
   if (!person.passport) issues.push('Passport image is missing');
   if (!person.headshot) issues.push('Headshot is missing');
   if (!person.preparedPhoto) issues.push('Prepare the 35 × 45 mm headshot');
@@ -95,11 +103,11 @@ function fieldMarkup(key, label, value, prefix = 'field') {
   const type = DATE_FIELDS.has(key) ? 'date' : 'text';
   const attrs = prefix === 'default' ? `data-default-field="${key}"` : `data-field="${key}"`;
   const wide = WIDE_FIELDS.has(key) ? ' wide' : '';
-  if (key === 'sex' || key === 'umrah_intended' || key === 'employment_status') {
-    const choices = key === 'sex' ? ['', 'Female', 'Male', 'Unspecified'] : key === 'umrah_intended' ? ['', 'Yes', 'No'] : ['', 'Unemployed', 'Employed', 'Student', 'Self-employed', 'Retired', 'Other'];
+  if (key === 'sex' || key === 'umrah_intended' || key === 'employment_status' || key === 'number_of_entries' || SECURITY_FIELDS.has(key)) {
+    const choices = key === 'sex' ? ['', 'Female', 'Male', 'Unspecified'] : key === 'umrah_intended' || SECURITY_FIELDS.has(key) ? ['', 'Yes', 'No'] : key === 'number_of_entries' ? ['', 'Single', 'Multiple'] : ['', 'Unemployed', 'Employed', 'Student', 'Self-employed', 'Retired', 'Other'];
     return `<div class="field${wide}"><label for="${prefix}-${key}">${escapeHtml(label)}</label><select id="${prefix}-${key}" ${attrs}>${choices.map(choice => `<option value="${escapeHtml(choice)}" ${choice === value ? 'selected' : ''}>${escapeHtml(choice || 'Select…')}</option>`).join('')}</select></div>`;
   }
-  return `<div class="field${wide}"><label for="${prefix}-${key}">${escapeHtml(label)}</label><input id="${prefix}-${key}" type="${type}" ${attrs} value="${escapeHtml(value || '')}"></div>`;
+  return `<div class="field${wide}"><label for="${prefix}-${key}">${escapeHtml(label)}</label><input id="${prefix}-${key}" type="${key === 'phone' || key === 'phone_country_code' ? 'tel' : type}" ${attrs} value="${escapeHtml(value || '')}"></div>`;
 }
 function documentCard(title, document, actions, placeholder) {
   const src = safeImageUrl(document?.data);
@@ -132,6 +140,18 @@ function modal(title, body, actions = '', wide = false) { $('#modalRoot').innerH
 
 function readFileAsDataUrl(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); }); }
 function loadImage(dataUrl) { return new Promise((resolve, reject) => { const image = new Image(); image.onload = () => resolve(image); image.onerror = () => reject(new Error('Image could not be opened')); image.src = dataUrl; }); }
+async function normalizePassportImage(item) {
+  if (!item?.data) return item;
+  let data = item.data;
+  if (!/^data:image\/(?:jpeg|png);base64,/i.test(data)) {
+    const image = await loadImage(data);
+    const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+    canvas.getContext('2d').drawImage(image, 0, 0);
+    data = canvas.toDataURL('image/jpeg', 0.95);
+  }
+  const extension = data.startsWith('data:image/png;') ? 'png' : 'jpeg';
+  return { ...item, data, name: `${String(item.name || 'passport').replace(/\.[^.]+$/, '')}.${extension}` };
+}
 function download(filename, content, type = 'application/json') { const blob = content instanceof Blob ? content : new Blob([content], { type }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = filename; document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000); }
 
 async function pdfPages(file) {
@@ -145,7 +165,7 @@ async function pdfPages(file) {
       const viewport = page.getViewport({ scale: 2 });
       const canvas = document.createElement('canvas'); canvas.width = Math.round(viewport.width); canvas.height = Math.round(viewport.height);
       await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-      pages.push({ name: `${file.name.replace(/\.pdf$/i, '')} page ${index}.jpg`, data: canvas.toDataURL('image/jpeg', 0.9) });
+      pages.push({ name: `${file.name.replace(/\.pdf$/i, '')} page ${index}.jpeg`, data: canvas.toDataURL('image/jpeg', 0.9) });
       page.cleanup();
     }
   } finally { await pdf.destroy(); }
@@ -157,7 +177,7 @@ async function importPassports(files) {
   const imported = [];
   for (const file of files) {
     try {
-      const documents = file.type === 'application/pdf' || /\.pdf$/i.test(file.name) ? await pdfPages(file) : [{ name: file.name, data: await readFileAsDataUrl(file) }];
+      const documents = file.type === 'application/pdf' || /\.pdf$/i.test(file.name) ? await pdfPages(file) : [await normalizePassportImage({ name: file.name, data: await readFileAsDataUrl(file) })];
       for (const passport of documents) { const person = makePerson({}, passport); state.people.push(person); imported.push(person); }
     } catch (error) { toast(`Could not import ${file.name}: ${error.message}`); }
   }
@@ -318,7 +338,7 @@ async function showPhotoCrop() {
 function addPerson() { const person = makePerson(); state.people.push(person); selectPerson(person.id); persist(); toast('New applicant added.'); }
 async function removePerson() { const person = selectedPerson(); if (!person || !confirm(`Remove ${personName(person)} from current applicants?`)) return; state.people = state.people.filter(item => item.id !== person.id); selectedId = state.people[0]?.id || null; await persist(); render(); }
 async function duplicatePerson(source = selectedPerson()) { if (!source) return; const person = normalizePerson(structuredClone(source)); person.id = uid(); person.createdAt = new Date().toISOString(); person.fields.arrival_date = ''; person.fields.flight_number = ''; person.ocrStatus = 'Reused details; verify current passport and photo'; state.people.push(person); selectedId = person.id; await persist(); render(); showView('applicants'); toast('New draft created from saved details.'); }
-async function renameFiles() { const person = selectedPerson(); if (!person) return; const base = safeFilename(personName(person)); for (const [key, suffix] of [['passport', 'passport'], ['headshot', 'headshot'], ['preparedPhoto', '35x45']]) if (person[key]) person[key].name = `${base}_${suffix}.${person[key].data?.startsWith('data:image/png') ? 'png' : 'jpg'}`; await persist(); render(); toast('Document labels renamed in this app. Downloaded copies use these names.'); }
+async function renameFiles() { const person = selectedPerson(); if (!person) return; const base = safeFilename(personName(person)); for (const [key, suffix] of [['passport', 'passport'], ['headshot', 'headshot'], ['preparedPhoto', '35x45']]) if (person[key]) { if (key === 'passport') person[key] = await normalizePassportImage(person[key]); person[key].name = `${base}_${suffix}.${person[key].data?.startsWith('data:image/png') ? 'png' : key === 'passport' ? 'jpeg' : 'jpg'}`; } await persist(); render(); toast('Document labels renamed in this app. Downloaded copies use these names.'); }
 async function markSubmitted() { const person = selectedPerson(); if (!person) return; const reference = prompt('Enter the official application reference, if you have one. Leave blank if unavailable.'); if (reference === null) return; state.history.push({ id: uid(), submittedAt: new Date().toISOString(), reference: reference.trim(), snapshot: structuredClone(person) }); await persist(); render(); showView('history'); toast('Submission recorded locally.'); }
 async function exportBackup() {
   if (!globalThis.crypto?.subtle) { toast('Encrypted backups require HTTPS or localhost. Open the GitHub Pages address on your phone.'); return; }
@@ -356,14 +376,15 @@ async function applyBackupPayload(payload) {
     const incoming = payload.workspace || payload;
     if (!Array.isArray(incoming.people) || !Array.isArray(incoming.history)) throw new Error('This is not a Visa Desk backup.');
     if (state.people.length && !confirm('Replace current applicants and history with this backup? Export your current data first if needed.')) return;
-    state = blankState(); state.defaults = { ...DEFAULTS, ...(incoming.defaults || {}) };
-    state.people = incoming.people.map(raw => { const person = normalizePerson(raw); person.passport = cleanDocument(raw.passport); person.headshot = cleanDocument(raw.headshot); person.preparedPhoto = cleanDocument(raw.preparedPhoto); return person; });
-    state.history = incoming.history.filter(item => item?.snapshot?.fields).map(item => ({ id: String(item.id || uid()), submittedAt: String(item.submittedAt || new Date().toISOString()), reference: String(item.reference || ''), snapshot: { ...normalizePerson(item.snapshot), passport: cleanDocument(item.snapshot.passport), headshot: cleanDocument(item.snapshot.headshot), preparedPhoto: cleanDocument(item.snapshot.preparedPhoto) } }));
+    state = blankState(); state.defaults = splitSaudiPhone({ ...DEFAULTS, ...(incoming.defaults || {}) });
+    state.people = await Promise.all(incoming.people.map(async raw => { const person = normalizePerson(raw); person.passport = await normalizePassportImage(cleanDocument(raw.passport)); person.headshot = cleanDocument(raw.headshot); person.preparedPhoto = cleanDocument(raw.preparedPhoto); return person; }));
+    state.history = await Promise.all(incoming.history.filter(item => item?.snapshot?.fields).map(async item => ({ id: String(item.id || uid()), submittedAt: String(item.submittedAt || new Date().toISOString()), reference: String(item.reference || ''), snapshot: { ...normalizePerson(item.snapshot), passport: await normalizePassportImage(cleanDocument(item.snapshot.passport)), headshot: cleanDocument(item.snapshot.headshot), preparedPhoto: cleanDocument(item.snapshot.preparedPhoto) } })));
     state.unassigned = (incoming.unassigned || []).map(cleanDocument).filter(Boolean).map(item => ({ ...item, id: item.id || uid() }));
     selectedId = state.people[0]?.id || null; await persist(); render(); showView('overview'); toast(`Imported ${state.people.length} applicants and ${state.history.length} history records.`);
   } catch (error) { toast(`Backup import failed: ${error.message}`); }
 }
 async function applyDefaults() { if (!confirm('Apply shared details to every current applicant? This replaces their contact, travel, address and work fields.')) return; for (const person of state.people) for (const [group, key] of FIELDS) if (SHARED_GROUPS.has(group)) person.fields[key] = state.defaults[key] || ''; await persist(); render(); toast('Shared details applied to current applicants.'); }
+async function fillMissingDefaults() { for (const person of state.people) for (const [group, key] of FIELDS) if (SHARED_GROUPS.has(group) && !String(person.fields[key] || '').trim() && String(state.defaults[key] || '').trim()) person.fields[key] = state.defaults[key]; await persist(); render(); toast('Missing shared details filled without replacing existing answers.'); }
 function downloadPhoto() { const photo = selectedPerson()?.preparedPhoto; if (!photo) return; fetch(photo.data).then(response => response.blob()).then(blob => download(photo.name, blob, 'image/jpeg')); }
 function setBusy(button, busy) { if (button) button.disabled = busy; }
 async function handleAction(action, element) {
@@ -384,25 +405,27 @@ async function handleAction(action, element) {
   else if (action === 'choose-headshot') await assignHeadshot(element.dataset.photo);
   else if (action === 'prepare-photo') await showPhotoCrop();
   else if (action === 'download-photo') downloadPhoto();
-  else if (action === 'download-passport') { const passport = selectedPerson()?.passport; if (passport) fetch(passport.data).then(response => response.blob()).then(blob => download(passport.name, blob, 'image/jpeg')); }
+  else if (action === 'download-passport') { const passport = selectedPerson()?.passport; if (passport) { const copy = await normalizePassportImage(passport); const blob = await fetch(copy.data).then(response => response.blob()); download(copy.name, blob, blob.type); } }
   else if (action === 'close-modal') closeModal();
   else if (action === 'open-official') window.open(ETA_URL, '_blank', 'noopener');
   else if (action === 'reuse-history') { const item = state.history.find(x => x.id === element.dataset.history); if (item) await duplicatePerson(item.snapshot); }
   else if (action === 'delete-history') { const item = state.history.find(x => x.id === element.dataset.history); if (item && confirm(`Delete the saved history for ${personName(item.snapshot)}?`)) { state.history = state.history.filter(x => x.id !== item.id); await persist(); render(); } }
 }
 async function init() {
-  try { const saved = await loadWorkspace(); if (saved) { state = { ...blankState(), ...saved, defaults: { ...DEFAULTS, ...(saved.defaults || {}) } }; state.people = (state.people || []).map(normalizePerson); state.history ||= []; state.unassigned ||= []; await saveWorkspace(state); } $('#storageStatus').textContent = 'Saved on this device'; }
+  try { const saved = await loadWorkspace(); if (saved) { state = { ...blankState(), ...saved, defaults: splitSaudiPhone({ ...DEFAULTS, ...(saved.defaults || {}) }) }; state.people = await Promise.all((state.people || []).map(async raw => { const person = normalizePerson(raw); person.passport = await normalizePassportImage(person.passport); return person; })); state.history ||= []; state.unassigned ||= []; await saveWorkspace(state); } $('#storageStatus').textContent = 'Saved on this device'; }
   catch (error) { $('#storageStatus').textContent = 'Storage unavailable'; toast(`Local storage failed: ${error.message}`); }
   navigator.storage?.persist?.().catch(() => {});
   selectedId = state.people[0]?.id || null; render();
   document.addEventListener('click', async event => { const view = event.target.closest('[data-view]'); if (view) { showView(view.dataset.view); return; } const person = event.target.closest('[data-select]'); if (person) { selectPerson(person.dataset.select); return; } const action = event.target.closest('[data-action]'); if (action) { try { await handleAction(action.dataset.action, action); } catch (error) { toast(error.message); } } });
   document.addEventListener('input', event => { if (event.target.id === 'peopleSearch') renderPeopleList(); if (event.target.matches('[data-field]')) { const person = selectedPerson(); if (person) { person.fields[event.target.dataset.field] = event.target.value; scheduleSave(); renderOverview(); renderPeopleList(); } } });
   document.addEventListener('change', event => { if (event.target.matches('[data-field]')) { const person = selectedPerson(); if (person) { person.fields[event.target.dataset.field] = event.target.value; scheduleSave(); renderDetail(); renderOverview(); renderPeopleList(); } } });
-  $('#passportInput').addEventListener('change', async event => { const files = [...event.target.files]; const replaceId = event.target.dataset.replace; event.target.value = ''; delete event.target.dataset.replace; if (replaceId && files.length === 1) { const person = state.people.find(x => x.id === replaceId); if (person) { const file = files[0]; const docs = file.type === 'application/pdf' || /\.pdf$/i.test(file.name) ? await pdfPages(file) : [{ name: file.name, data: await readFileAsDataUrl(file) }]; person.passport = docs[0]; await persist(); render(); await readPassport(person); } } else await importPassports(files); });
+  $('#passportInput').addEventListener('change', async event => { const files = [...event.target.files]; const replaceId = event.target.dataset.replace; event.target.value = ''; delete event.target.dataset.replace; if (replaceId && files.length === 1) { const person = state.people.find(x => x.id === replaceId); if (person) { const file = files[0]; const docs = file.type === 'application/pdf' || /\.pdf$/i.test(file.name) ? await pdfPages(file) : [await normalizePassportImage({ name: file.name, data: await readFileAsDataUrl(file) })]; person.passport = docs[0]; await persist(); render(); await readPassport(person); } } else await importPassports(files); });
   $('#headshotInput').addEventListener('change', async event => { const files = [...event.target.files]; event.target.value = ''; await importHeadshots(files); });
   $('#backupInput').addEventListener('change', async event => { const file = event.target.files[0]; event.target.value = ''; await importBackup(file); });
   $('#exportBackupBtn').addEventListener('click', exportBackup);
-  $('#saveDefaultsBtn').addEventListener('click', async () => { document.querySelectorAll('[data-default-field]').forEach(input => state.defaults[input.dataset.defaultField] = input.value); await persist(); toast('Shared defaults saved for new applicants.'); });
-  $('#applyDefaultsBtn').addEventListener('click', async () => { document.querySelectorAll('[data-default-field]').forEach(input => state.defaults[input.dataset.defaultField] = input.value); await applyDefaults(); });
+  const readDefaults = () => { document.querySelectorAll('[data-default-field]').forEach(input => state.defaults[input.dataset.defaultField] = input.value); splitSaudiPhone(state.defaults); };
+  $('#saveDefaultsBtn').addEventListener('click', async () => { readDefaults(); await persist(); renderDefaults(); toast('Shared defaults saved for new applicants.'); });
+  $('#fillMissingDefaultsBtn').addEventListener('click', async () => { readDefaults(); await fillMissingDefaults(); });
+  $('#applyDefaultsBtn').addEventListener('click', async () => { readDefaults(); await applyDefaults(); });
 }
 init();
