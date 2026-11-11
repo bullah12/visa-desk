@@ -1,0 +1,22 @@
+VISA DESK - CHROME EXTENSION
+
+1. Extract the ZIP into a permanent folder.
+2. Open chrome://extensions in desktop Google Chrome.
+3. Enable Developer mode, choose Load unpacked, and select the folder
+   containing manifest.json.
+4. Pin Visa Desk using Chrome's puzzle-piece menu, then click its icon.
+
+No Python, web server or Internet connection is needed to prepare drafts.
+Use Import data to load a Visa Desk backup, then choose Merge or Replace.
+Use Export backup for encrypted transfers between installations or the web app.
+Store the passphrase separately. Other extensions' formats need conversion.
+
+Records and images remain in this extension's local Chrome profile.
+There is no cloud sync. Local records are not encrypted by the app; exported
+backups are encrypted. Uninstalling can erase local records, so export first.
+Keep this installation folder in place and update it in place to preserve
+the unpacked extension ID and local storage.
+
+Review recognized details against each passport. Submit manually on the
+official site: this extension does not autofill, upload, pay or submit.
+Desktop Chrome only; Android Chrome does not support desktop extensions.

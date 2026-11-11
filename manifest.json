@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Visa Desk — Local Passport Workspace",
+  "version": "1.0.0",
+  "minimum_chrome_version": "120",
+  "description": "Prepare passport drafts and photos offline. Move your local workspace using encrypted backup files.",
+  "permissions": ["unlimitedStorage"],
+  "action": { "default_title": "Open Visa Desk" },
+  "background": { "service_worker": "extension/background.mjs", "type": "module" },
+  "options_ui": { "page": "index.html", "open_in_tab": true },
+  "icons": { "16": "extension/icon-16.png", "32": "extension/icon-32.png", "48": "extension/icon-48.png", "128": "extension/icon-128.png" },
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self' data: blob:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none';"
+  }
+}

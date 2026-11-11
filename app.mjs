@@ -1,6 +1,7 @@
 import { loadWorkspace, saveWorkspace } from './storage.mjs';
 import { scanPassportFields, scanPrintedPassportFields } from './mrz.mjs';
 import { encryptBackup, decryptBackup } from './crypto.mjs';
+import { parseWorkspace, mergeWorkspaces, safeImageUrl } from './transfer.mjs';
 
 const ETA_URL = 'https://ksavisa.sa/visa/electronic-travel-authorization/details';
 const FIELDS = [
@@ -38,6 +39,7 @@ let saveTimer;
 let ocrWorkerPromise;
 let toastTimer;
 let pendingEncryptedBackup = null;
+let pendingImport = null;
 
 function personName(person) { return `${person.fields.first_names || ''} ${person.fields.surname || ''}`.trim() || 'Name pending'; }
 function initials(person) { return personName(person).split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase(); }
@@ -45,7 +47,7 @@ function selectedPerson() { return state.people.find(person => person.id === sel
 function safeFilename(value) { return String(value || 'person').replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'person'; }
 function splitSaudiPhone(fields) { const phone = String(fields.phone || '').trim(); if (/^(?:\+966|00966)[\s-]*/.test(phone)) { fields.phone = phone.replace(/^(?:\+966|00966)[\s-]*/, ''); fields.phone_country_code = '+966'; } else fields.phone_country_code ||= '+966'; return fields; }
 function toast(message) { const node = $('#toast'); node.textContent = message; node.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => node.classList.remove('show'), 4500); }
-function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(() => persist(), 350); }
+function scheduleSave() { persist(); }
 async function persist() { clearTimeout(saveTimer); try { await saveWorkspace(state); $('#storageStatus').textContent = 'Saved on this device'; } catch (error) { $('#storageStatus').textContent = 'Storage unavailable · export backup'; toast(`Could not save locally: ${error.message}`); } }
 function makePerson(fields = {}, passport = null) {
   const allFields = Object.fromEntries(FIELDS.map(([, key]) => [key, '']));
@@ -113,16 +115,27 @@ function documentCard(title, document, actions, placeholder) {
   const src = safeImageUrl(document?.data);
   return `<div class="document-card"><h3>${escapeHtml(title)}</h3>${src ? `<img src="${src}" alt="${escapeHtml(title)} preview"><small title="${escapeHtml(document.name)}">${escapeHtml(document.name)}</small>` : `<div class="missing-image">${escapeHtml(placeholder)}</div><small> </small>`}${actions}</div>`;
 }
+function reviewSummary(person) {
+  const issues = reviewItems(person);
+  return `<div data-review-summary class="review-banner ${issues.length ? '' : 'ready'}"><strong>${issues.length ? `${issues.length} item${issues.length === 1 ? '' : 's'} to review` : 'Basic checks passed'}</strong>${issues.length ? `<ul>${issues.slice(0, 7).map(item => `<li>${escapeHtml(item)}</li>`).join('')}${issues.length > 7 ? `<li>…and ${issues.length - 7} more</li>` : ''}</ul>` : '<p>Check every value against the passport and the live form before submitting.</p>'}</div>`;
+}
+function refreshEditedPerson(person) {
+  // Updating a summary must never replace the input the user is moving into.
+  const title = $('#personDetail .detail-header h2');
+  if (title) title.textContent = personName(person);
+  const summary = $('[data-review-summary]');
+  if (summary) summary.outerHTML = reviewSummary(person);
+  renderOverview(); renderPeopleList();
+}
 function renderDetail() {
   const pane = $('#personDetail'); const person = selectedPerson();
   if (!person) { pane.innerHTML = '<div class="empty-detail"><div class="empty-icon">▤</div><h2>Select an applicant</h2><p>Their details and documents will appear here.</p></div>'; return; }
-  const issues = reviewItems(person);
   const groups = [...new Set(FIELDS.map(([group]) => group))];
   const sections = groups.map(group => `<section class="section-block"><h3>${escapeHtml(group)}</h3><div class="form-grid">${FIELDS.filter(([name]) => name === group).map(([, key, label]) => fieldMarkup(key, label, person.fields[key])).join('')}</div></section>`).join('');
   pane.innerHTML = `<div class="detail-header"><div><h2>${escapeHtml(personName(person))}</h2><p>${escapeHtml(person.ocrStatus || 'Passport not scanned')} · ${escapeHtml(person.fields.nationality || 'Nationality pending')}</p></div><div class="detail-actions"><button class="button button-outline" data-action="rename-files">Rename copies</button><button class="button button-outline" data-action="reuse-person">Duplicate draft</button><button class="button button-danger" data-action="remove-person">Remove</button></div></div>
     ${outstandingScanMissing(person).length ? `<div class="review-banner"><strong>Scan could not extract</strong><p>${escapeHtml(outstandingScanMissing(person).join(', '))}</p></div>` : ''}
     ${person.scanConflicts?.length ? `<div class="review-banner"><strong>Check saved details against scan</strong><p>The scan read different values for ${escapeHtml(person.scanConflicts.join(', '))}. Your saved entries were kept.</p></div>` : ''}
-    <div class="review-banner ${issues.length ? '' : 'ready'}"><strong>${issues.length ? `${issues.length} item${issues.length === 1 ? '' : 's'} to review` : 'Basic checks passed'}</strong>${issues.length ? `<ul>${issues.slice(0, 7).map(item => `<li>${escapeHtml(item)}</li>`).join('')}${issues.length > 7 ? `<li>…and ${issues.length - 7} more</li>` : ''}</ul>` : '<p>Check every value against the passport and the live form before submitting.</p>'}</div>
+    ${reviewSummary(person)}
     <div class="document-grid">${documentCard('Passport page', person.passport, '<button class="button button-outline" data-action="read-passport">Scan again</button><button class="button button-outline" data-action="download-passport">Download copy</button><button class="button button-outline" data-action="replace-passport">Replace passport</button>', 'No passport image')}${documentCard('Headshot', person.headshot, '<button class="button button-outline" data-action="assign-headshot">Assign headshot</button><button class="button button-primary" data-action="prepare-photo">Prepare 35 × 45</button>', 'No headshot')}${person.preparedPhoto ? documentCard('Prepared 35 × 45 photo', person.preparedPhoto, '<button class="button button-outline" data-action="download-photo">Download prepared photo</button>', 'Not prepared') : ''}</div>
     ${sections}<div class="detail-footer"><button class="button button-primary" data-action="mark-submitted">Mark as submitted</button><button class="button button-outline" data-action="open-official">Open official ETA page</button><button class="button button-subtle" disabled title="The signed-in website fields have not been mapped yet">Website autofill: pending form access</button></div>`;
 }
@@ -135,7 +148,7 @@ function renderDefaults() {
 function render() { renderOverview(); renderPeopleList(); renderDetail(); renderHistory(); renderDefaults(); }
 function showView(view) { currentView = view; document.querySelectorAll('.view').forEach(node => node.classList.toggle('active', node.id === `view-${view}`)); document.querySelectorAll('.nav-link').forEach(node => node.classList.toggle('active', node.dataset.view === view)); if (view === 'applicants') renderPeopleList(); window.scrollTo(0, 0); }
 function selectPerson(id) { selectedId = id; renderPeopleList(); renderDetail(); showView('applicants'); }
-function closeModal() { $('#modalRoot').innerHTML = ''; }
+function closeModal() { $('#modalRoot').innerHTML = ''; pendingEncryptedBackup = null; pendingImport = null; }
 function modal(title, body, actions = '', wide = false) { $('#modalRoot').innerHTML = `<div class="modal-backdrop"><div class="modal ${wide ? 'wide' : ''}" role="dialog" aria-modal="true"><div class="modal-head"><h2>${escapeHtml(title)}</h2><button class="icon-button" data-action="close-modal" aria-label="Close">×</button></div>${body}<div class="modal-actions">${actions}</div></div></div>`; }
 
 function readFileAsDataUrl(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); }); }
@@ -157,7 +170,7 @@ function download(filename, content, type = 'application/json') { const blob = c
 async function pdfPages(file) {
   const pdfjs = await import('./vendor/pdfjs/pdf.min.mjs');
   pdfjs.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdfjs/pdf.worker.min.mjs', import.meta.url).href;
-  const pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false }).promise;
   const pages = [];
   try {
     for (let index = 1; index <= pdf.numPages; index++) {
@@ -342,7 +355,7 @@ async function renameFiles() { const person = selectedPerson(); if (!person) ret
 async function markSubmitted() { const person = selectedPerson(); if (!person) return; const reference = prompt('Enter the official application reference, if you have one. Leave blank if unavailable.'); if (reference === null) return; state.history.push({ id: uid(), submittedAt: new Date().toISOString(), reference: reference.trim(), snapshot: structuredClone(person) }); await persist(); render(); showView('history'); toast('Submission recorded locally.'); }
 async function exportBackup() {
   if (!globalThis.crypto?.subtle) { toast('Encrypted backups require HTTPS or localhost. Open the GitHub Pages address on your phone.'); return; }
-  modal('Export encrypted backup', '<p>Choose a passphrase of at least 12 characters. You will need it to import this file on another device. It is never saved by the app.</p><div class="field"><label for="backupPass">Passphrase</label><input id="backupPass" type="password" autocomplete="new-password"></div><div class="field"><label for="backupPassConfirm">Confirm passphrase</label><input id="backupPassConfirm" type="password" autocomplete="new-password"></div>', '<button class="button button-outline" data-action="close-modal">Cancel</button><button class="button button-primary" data-action="create-encrypted-backup">Download encrypted backup</button>');
+  modal('Export encrypted backup', '<p>Includes applicants, passport images, headshots, prepared photos, history and shared defaults. Import this file into another Visa Desk extension or the web app. Choose a passphrase of at least 12 characters; it is never saved by the app.</p><div class="field"><label for="backupPass">Passphrase</label><input id="backupPass" type="password" autocomplete="new-password"></div><div class="field"><label for="backupPassConfirm">Confirm passphrase</label><input id="backupPassConfirm" type="password" autocomplete="new-password"></div>', '<button class="button button-outline" data-action="close-modal">Cancel</button><button class="button button-primary" data-action="create-encrypted-backup">Download encrypted backup</button>');
 }
 async function createEncryptedBackup() {
   const passphrase = $('#backupPass').value;
@@ -352,8 +365,6 @@ async function createEncryptedBackup() {
   download(`visa-desk-backup-${new Date().toISOString().slice(0, 10)}.encrypted.json`, JSON.stringify(envelope));
   closeModal(); toast('Encrypted backup downloaded. Keep the passphrase separately.');
 }
-function safeImageUrl(value) { return /^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(value || '') ? value : ''; }
-function cleanDocument(value) { if (!value || typeof value !== 'object') return null; const data = safeImageUrl(value.data); return data ? { ...value, name: String(value.name || 'image').slice(0, 200), data } : null; }
 async function importBackup(file) {
   if (!file) return;
   try {
@@ -363,25 +374,33 @@ async function importBackup(file) {
       modal('Unlock encrypted backup', '<p>Enter the passphrase used when this backup was exported.</p><div class="field"><label for="unlockPass">Backup passphrase</label><input id="unlockPass" type="password" autocomplete="off"></div>', '<button class="button button-outline" data-action="close-modal">Cancel</button><button class="button button-primary" data-action="unlock-backup">Unlock and import</button>');
       return;
     }
-    await applyBackupPayload(payload);
+    previewBackup(payload);
   } catch (error) { toast(`Backup import failed: ${error.message}`); }
 }
 async function unlockBackup() {
   if (!pendingEncryptedBackup) return;
-  try { const payload = JSON.parse(await decryptBackup(pendingEncryptedBackup, $('#unlockPass').value)); await applyBackupPayload(payload); pendingEncryptedBackup = null; closeModal(); }
+  try { const payload = JSON.parse(await decryptBackup(pendingEncryptedBackup, $('#unlockPass').value)); previewBackup(payload); pendingEncryptedBackup = null; }
   catch (error) { toast(`Backup import failed: ${error.message}`); }
 }
-async function applyBackupPayload(payload) {
-  try {
-    const incoming = payload.workspace || payload;
-    if (!Array.isArray(incoming.people) || !Array.isArray(incoming.history)) throw new Error('This is not a Visa Desk backup.');
-    if (state.people.length && !confirm('Replace current applicants and history with this backup? Export your current data first if needed.')) return;
-    state = blankState(); state.defaults = splitSaudiPhone({ ...DEFAULTS, ...(incoming.defaults || {}) });
-    state.people = await Promise.all(incoming.people.map(async raw => { const person = normalizePerson(raw); person.passport = await normalizePassportImage(cleanDocument(raw.passport)); person.headshot = cleanDocument(raw.headshot); person.preparedPhoto = cleanDocument(raw.preparedPhoto); return person; }));
-    state.history = await Promise.all(incoming.history.filter(item => item?.snapshot?.fields).map(async item => ({ id: String(item.id || uid()), submittedAt: String(item.submittedAt || new Date().toISOString()), reference: String(item.reference || ''), snapshot: { ...normalizePerson(item.snapshot), passport: await normalizePassportImage(cleanDocument(item.snapshot.passport)), headshot: cleanDocument(item.snapshot.headshot), preparedPhoto: cleanDocument(item.snapshot.preparedPhoto) } })));
-    state.unassigned = (incoming.unassigned || []).map(cleanDocument).filter(Boolean).map(item => ({ ...item, id: item.id || uid() }));
-    selectedId = state.people[0]?.id || null; await persist(); render(); showView('overview'); toast(`Imported ${state.people.length} applicants and ${state.history.length} history records.`);
-  } catch (error) { toast(`Backup import failed: ${error.message}`); }
+function previewBackup(payload) {
+  pendingImport = parseWorkspace(payload);
+  const { workspace: incoming, missingDesktopImages } = pendingImport;
+  modal('Import local workspace', `<p>This file contains <strong>${incoming.people.length} applicants</strong>, ${incoming.history.length} history records and ${incoming.unassigned.length} unassigned photos.</p><p>Merge keeps your current records and shared defaults. Matching IDs with identical content are skipped; changed copies are added separately. Replace restores this file’s entire workspace.</p>${missingDesktopImages ? '<p>Desktop JSON contains file paths, not embedded images. Details will import; add the passport images and headshots separately, or use a converted web backup that includes them.</p>' : ''}<p>Current workspace: ${state.people.length} applicants and ${state.history.length} history records. Export a backup before replacing anything you want to keep.</p>`, '<button class="button button-outline" data-action="close-modal">Cancel</button><button class="button button-outline" data-action="import-replace">Replace workspace</button><button class="button button-primary" data-action="import-merge">Merge records</button>');
+}
+async function applyBackup(mode) {
+  if (!pendingImport) return;
+  if (mode === 'replace' && (state.people.length || state.history.length || state.unassigned.length || Object.keys(state.defaults).some(key => state.defaults[key] !== DEFAULTS[key])) && !confirm('Replace all current applicants, history, photos and shared defaults? Export a backup first to keep them.')) return;
+  const incoming = pendingImport.workspace;
+  const normalizeImported = async raw => { const person = normalizePerson(raw); person.passport = await normalizePassportImage(person.passport); return person; };
+  const normalized = { ...incoming, defaults: splitSaudiPhone({ ...DEFAULTS, ...incoming.defaults }), people: await Promise.all(incoming.people.map(normalizeImported)), history: await Promise.all(incoming.history.map(async item => ({ ...item, snapshot: await normalizeImported(item.snapshot) }))) };
+  const next = mode === 'merge' ? mergeWorkspaces(state, normalized) : normalized;
+  // Commit to disk before replacing the visible workspace. A failed import leaves it intact.
+  clearTimeout(saveTimer);
+  await saveWorkspace(next);
+  state = next;
+  selectedId = state.people[0]?.id || null;
+  closeModal(); render(); showView('overview'); $('#storageStatus').textContent = 'Saved on this device';
+  toast(`Workspace ${mode === 'merge' ? 'merged' : 'restored'} locally. ${state.people.length} applicants saved.`);
 }
 async function applyDefaults() { if (!confirm('Apply shared details to every current applicant? This replaces their contact, travel, address and work fields.')) return; for (const person of state.people) for (const [group, key] of FIELDS) if (SHARED_GROUPS.has(group)) person.fields[key] = state.defaults[key] || ''; await persist(); render(); toast('Shared details applied to current applicants.'); }
 async function fillMissingDefaults() { for (const person of state.people) for (const [group, key] of FIELDS) if (SHARED_GROUPS.has(group) && !String(person.fields[key] || '').trim() && String(state.defaults[key] || '').trim()) person.fields[key] = state.defaults[key]; await persist(); render(); toast('Missing shared details filled without replacing existing answers.'); }
@@ -397,6 +416,8 @@ async function handleAction(action, element) {
   else if (action === 'create-encrypted-backup') await createEncryptedBackup();
   else if (action === 'backup-import') $('#backupInput').click();
   else if (action === 'unlock-backup') await unlockBackup();
+  else if (action === 'import-merge') await applyBackup('merge');
+  else if (action === 'import-replace') await applyBackup('replace');
   else if (action === 'passport-import') $('#passportInput').click();
   else if (action === 'headshot-import') $('#headshotInput').click();
   else if (action === 'replace-passport') { $('#passportInput').dataset.replace = selectedId || ''; $('#passportInput').click(); }
@@ -417,8 +438,8 @@ async function init() {
   navigator.storage?.persist?.().catch(() => {});
   selectedId = state.people[0]?.id || null; render();
   document.addEventListener('click', async event => { const view = event.target.closest('[data-view]'); if (view) { showView(view.dataset.view); return; } const person = event.target.closest('[data-select]'); if (person) { selectPerson(person.dataset.select); return; } const action = event.target.closest('[data-action]'); if (action) { try { await handleAction(action.dataset.action, action); } catch (error) { toast(error.message); } } });
-  document.addEventListener('input', event => { if (event.target.id === 'peopleSearch') renderPeopleList(); if (event.target.matches('[data-field]')) { const person = selectedPerson(); if (person) { person.fields[event.target.dataset.field] = event.target.value; scheduleSave(); renderOverview(); renderPeopleList(); } } });
-  document.addEventListener('change', event => { if (event.target.matches('[data-field]')) { const person = selectedPerson(); if (person) { person.fields[event.target.dataset.field] = event.target.value; scheduleSave(); renderDetail(); renderOverview(); renderPeopleList(); } } });
+  document.addEventListener('input', event => { if (event.target.id === 'peopleSearch') renderPeopleList(); if (event.target.matches('[data-field]')) { const person = selectedPerson(); if (person) { person.fields[event.target.dataset.field] = event.target.value; scheduleSave(); refreshEditedPerson(person); } } });
+  document.addEventListener('change', event => { if (event.target.matches('[data-field]')) { const person = selectedPerson(); if (person) { person.fields[event.target.dataset.field] = event.target.value; scheduleSave(); refreshEditedPerson(person); } } });
   $('#passportInput').addEventListener('change', async event => { const files = [...event.target.files]; const replaceId = event.target.dataset.replace; event.target.value = ''; delete event.target.dataset.replace; if (replaceId && files.length === 1) { const person = state.people.find(x => x.id === replaceId); if (person) { const file = files[0]; const docs = file.type === 'application/pdf' || /\.pdf$/i.test(file.name) ? await pdfPages(file) : [await normalizePassportImage({ name: file.name, data: await readFileAsDataUrl(file) })]; person.passport = docs[0]; await persist(); render(); await readPassport(person); } } else await importPassports(files); });
   $('#headshotInput').addEventListener('change', async event => { const files = [...event.target.files]; event.target.value = ''; await importHeadshots(files); });
   $('#backupInput').addEventListener('change', async event => { const file = event.target.files[0]; event.target.value = ''; await importBackup(file); });
